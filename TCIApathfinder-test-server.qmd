@@ -1,0 +1,24 @@
+---
+title: "TCIApathfinder-test"
+subtitle: "Server machine"
+---
+
+## `TCIApathfinder` test
+
+```{r}
+library(TCIApathfinder)
+```
+
+Try to get names of all TCIA collections
+
+```{r, eval=FALSE}
+test <- get_collection_names()
+summary(test)
+```
+
+## sessionInfo
+
+```{r}
+sessionInfo()
+```
+
