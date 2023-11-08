@@ -4,3 +4,8 @@
 .Ruserdata
 
 /.quarto/
+
+data/
+dicom/
+
+*DS_Store

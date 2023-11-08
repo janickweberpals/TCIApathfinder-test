@@ -1,0 +1,166 @@
+---
+title: "TCIApathfinder exploration"
+subtitle: "Local machine"
+---
+
+## `TCIApathfinder` test queries
+
+```{r}
+library(TCIApathfinder)
+library(oro.dicom, warn.conflicts = FALSE)
+library(dplyr, warn.conflicts = FALSE)
+library(gt, warn.conflicts = FALSE)
+```
+
+## TCIA collections
+
+Try to get names of all TCIA collections
+
+```{r}
+collections <- get_collection_names()
+collections$collection_names
+```
+
+Let's say we're interested in the `Cancer Genome Atlas Lung Squamous Cell Carcinoma Collection (TCGA-LUSC)`
+
+## Overall logic
+
+Each DICOM file is designed to be standalone — all the information needed to identify the file is embedded in each header. This information is organized into 4 levels of hierarchy — patient, study, series, and instance.
+
+-   “Patient” is the person receiving the exam
+-   “Study” is the imaging procedure being performed, at a certain date and time, in the hospital
+-   “Series” — Each study consists of multiple series. A series may represent the patient being physically scanned multiple times in one study (typical for MRI), or it may be virtual, where the patient is scanned once and that data is reconstructed in different ways (typical for CT)
+-   “Instance” — every slice of a 3D image is treated as a separate instance. In this context, “instance” is synonymous with the DICOM file itself
+
+### Query patient information
+
+```{r}
+patients <- get_patient_info(collection = "TCGA-LUSC")
+patients$patients |> 
+  glimpse()
+```
+
+### Query information on imaging modalities
+
+```{r}
+modalities <- get_modality_names(collection = "TCGA-LUSC")
+modalities$modalities
+```
+
+### Query information on patients by imaging modalities
+
+```{r}
+get_modality_count <- function(i){
+  
+  pat_mod_i <- get_patients_by_modality(collection = "TCGA-LUSC", modality = i)
+  patient_count <- length(unique(pat_mod_i$patient_ids))
+  
+  df <- tibble::tibble(
+    Modality = i,
+    `Number of patients` = patient_count
+    )
+  
+  return(df)
+  
+}
+
+patients_by_modality_list <- parallel::mclapply(
+  X = modalities$modalities,
+  FUN = get_modality_count,
+  mc.cores = parallel::detectCores()-1
+  )
+
+patients_by_modality_df <- do.call(rbind, patients_by_modality_list)
+
+patients_by_modality_df |> 
+  arrange(desc(`Number of patients`)) |> 
+  gt() |> 
+  tab_header(title = "Number of patients by imaging modality")
+```
+
+### Query information on scanned body parts
+
+```{r}
+body <- get_body_part_names(collection = "TCGA-LUSC")
+body$body_parts
+```
+
+### Query information on manufacturer
+
+```{r}
+manufacturer <- get_manufacturer_names(collection = "TCGA-LUSC")
+manufacturer$manufacturer_names
+```
+
+### Get patient image study information for a given TCIA collection
+
+```{r}
+studies <- get_studies_in_collection(collection = "TCGA-LUSC")
+studies$studies |> 
+  arrange(PatientID, StudyInstanceUID) |> 
+  gt() |> 
+  opt_interactive()
+```
+
+### Get series information
+
+```{r}
+series <- get_series_info(collection = "TCGA-LUSC")
+
+series$series |> 
+  arrange(study_instance_uid, series_date, modality) |> 
+  gt() |> 
+  opt_interactive()
+```
+
+### Get SOP instance UIDs (individual DICOM image IDs) for an image series
+
+```{r}
+uids <- get_sop_instance_uids(series_instance_uid = "1.3.6.1.4.1.14519.5.2.1.3023.4012.199485338205759569703854021557")
+head(uids$sop_instance_uids)
+```
+
+## Save a series of DICOM image files as a zip file
+
+```{r}
+#| eval: true
+
+# save in a directory
+if(!dir.exists(here::here("dicom"))){
+  
+  series2 <- save_extracted_image_series(
+    series_instance_uid = "1.3.6.1.4.1.14519.5.2.1.3023.4012.323683894073974637495373822467",
+    out_dir = here::here("dicom")
+    )
+  
+  }
+```
+
+# Work with DICOM
+
+```{r}
+# Check the dimensions of the 3D array
+# Read in the DICOM images and create a 3D array of intensities
+dicom_list <- readDICOM(here::here("dicom"))
+img_array_3d <- create3D(dicom_list)
+
+# Check the dimensions of the 3D array
+dim(img_array_3d)
+```
+
+This means we have `r dim(img_array_3d)[[3]]` images with each a dimension of `r dim(img_array_3d)[[1]]` x `r dim(img_array_3d)[[2]]`.
+
+Now we can convert to a Nifti format
+
+```{r}
+img_nifti <- dicom2nifti(dicom_list)
+img_nifti
+```
+
+
+## sessionInfo
+
+```{r}
+sessionInfo()
+```
+
